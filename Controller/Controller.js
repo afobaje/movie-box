@@ -1,13 +1,20 @@
 const cheerio = require("cheerio");
 const axios = require("axios");
-const fs = require("fs");
-const readData = require("../movieList.json");
+const cron = require("node-cron");
 const url = `https://www.tfpdl.is`;
 const latestMovies = `/category/movies`;
-const readMovie = require("../movieItem.json");
+const readMovieDetails = require("../movieDetailsList.json");
+const client = require("../client");
+const insertRow = require("../Query/insertData");
+const puppeteer = require("puppeteer");
+const selectRows = require("./../Query/listData");
+const { trimName, trimNamefromFirst, getSlug } = require("./../Utils/helper");
+const {
+  updateRow,
+  updateTable,
+  updateDownload,
+} = require("../Query/updateData");
 
-let num = 1;
-const movieItems = [];
 async function scrapeData() {
   const { data } = await axios.get(`${url}${latestMovies}`);
   let $ = cheerio.load(`${data}`, null, false);
@@ -17,91 +24,116 @@ async function scrapeData() {
     let untrimmedDescription = $(el).find(".entry p").text();
     let untrimmedImgSrc = $(el).find(".entry p img").attr("src");
     const link = $(el).find(".post-title a").attr("href");
-    // movieItems.push({untrimmedDescription,untrimmedImgSrc,untrimmedTitle,link})
     const imgSrc = trimName(untrimmedImgSrc, "?");
     const slug = getSlug(link);
     const title = trimName(untrimmedTitle, " x");
-    let id = num++;
     const description = trimName(untrimmedDescription, "\n");
-    movieItems.push({ id, title, link, imgSrc, slug, description });
+    insertRow(title, link, imgSrc, slug, description);
   });
+}
 
-  
+cron.schedule("5 10 * * wed", scrapeData);
+cron.schedule("6 10 * * wed", getEveryMovieDetails);
+cron.schedule("7 10 * * wed", getAllActualDownloadLink);
 
-  
+async function getMovieRedirectLink(url) {
+  try {
+    const { data } = await axios.get(url);
+    const $ = await cheerio.load(`${data}`, null, false);
+    let downloadLink = $(".post-inner").find(".button").attr("href");
+    return downloadLink;
+  } catch (error) {
+    console.log(error);
+  }
+}
 
-  let parsedData = JSON.stringify(movieItems);
+async function getEveryMovieDetails() {
+  try {
+    let data = await selectRows();
+    await Promise.all(
+      data.map((val) => {
+        if (val.downloadLink !== null) {
+          return;
+        }
+        getMovieRedirectLink(val.link)
+          .then((res) => {
+            updateRow(val.ID, res);
+          })
+          .catch((err) => console.error(err, "couldnt fetch"));
+      })
+    );
+    console.log("File written successfully");
+  } catch (err) {
+    console.error(err, "couldn't write");
+  }
+}
+
+async function getAllActualDownloadLink() {
+  try {
+    let data = await selectRows();
+    await Promise.all(
+      data.map((val) => {
+        if (val.DOWNLOAD !== null) {
+          return;
+        }
+        getActualMovieLink(val.downloadLink)
+          .then((res) => {
+            updateDownload(val.ID, res);
+          })
+          .catch((err) => console.error(err, "couldnt get link"));
+      })
+    );
+  } catch (error) {
+    console.log("couldnt write successfully");
+  }
+}
+
+async function getActualMovieLink(url) {
+  try {
+    const { data } = await axios.get(url);
+    const $ = await cheerio.load(`${data}`, null, false);
+    let link = $("form").attr("action");
+    let rel = $("input[name=_wp_http_referer]").val();
+    let trimmedRel = trimNamefromFirst(rel, "/");
+    let newLink = link.concat(trimmedRel);
+    return newLink;
+  } catch (error) {
+    console.error("couldnt get file", error);
+  }
+}
+
+async function downloadMovie() {
+  const browser = await puppeteer.launch({headless:'new'});
+  const page = await browser.newPage();
+  await page.goto(
+    "https://www.nairaland.com"
+  )
+  await page.$$eval('html',html=>{
+    return html.map(val=>console.log(val.DOCUMENT_NODE))
+  })
   
-  fs.writeFile("movieList.json", parsedData, (err) => {
-    console.error(err, "error writing file");
-  });
+  await browser.close()
+
   
 }
 
+downloadMovie();
 
-
-
-
-
-
-
-async function getDetails(url) {
-  const { data } = await axios.get(url);
-  const $ = await cheerio.load(`${data}`, null, false);
-  let pageTitle = $("post-inner").find("h1 > span").text();
-  let pageImg = $(".post-inner").find(".entry img").attr("src");
-  let untrimmedDesc = $(".post-inner").find(".entry p").text();
-  let downloadLink = $(".post-inner").find(".button").attr("href");
-  let desc = trimName(untrimmedDesc, "Link");
-
-  console.log(desc,'this is desc')
-
-  let movie = {
-    pageTitle,
-    pageImg,
-    desc,
-    downloadLink,
-  };
-  //  movie;
-  let movieData = JSON.stringify(movie);
-
-  fs.writeFile("movieItem.json", movieData, (err) => console.error(err));
-}
-
-function getSlug(url) {
-  const getUrl = new URL(url);
-  return getUrl.pathname;
-}
-
-function trimName(value, trim) {
-  let newVal = value.split(trim);
-  newVal.pop();
-  let trimmed = newVal.join("");
-  return trimmed;
-}
-
-// scrapeData();
-
-
-
-
-setInterval(() => {
-  scrapeData();
-}, 1000 * 3600);
-
-function getItem(req, res, next) {
-  res.status(200).json(readData);
+async function getItem(req, res, next) {
+  let data = await selectRows();
+  res.status(200).json(data || {});
   next();
 }
 
 function getMovie(req, res, next) {
-  res.status(200).json(readMovie);
+  res.status(200).json(readMovieDetails);
   next();
 }
 
 async function postItem(req, res, next) {
   const newRequest = await req.body;
-  const result = await getDetails(newRequest.link);
+  console.log(newRequest, "melo melo");
+  // const result = await getDetails(newRequest.link);
   res.status(200).json({ bnxn: "foreplay" });
   next();
 }
