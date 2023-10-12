@@ -13,7 +13,10 @@ const {
   updateRow,
   updateTable,
   updateDownload,
+  updateDownloadLinks,
 } = require("../Query/updateData");
+
+const tableData = selectRows();
 
 async function scrapeData() {
   const { data } = await axios.get(`${url}${latestMovies}`);
@@ -102,22 +105,128 @@ async function getActualMovieLink(url) {
   }
 }
 
-async function downloadMovie() {
-  const browser = await puppeteer.launch({headless:'new'});
+async function downloadMovie(browser, xproxxLink) {
+  // const browser = await puppeteer.launch({ headless: false });
   const page = await browser.newPage();
-  await page.goto(
-    "https://www.nairaland.com"
-  )
-  await page.$$eval('html',html=>{
-    return html.map(val=>console.log(val.DOCUMENT_NODE))
-  })
-  
-  await browser.close()
+  await page.setDefaultTimeout(120000);
+  // await page.setDefaultNavigationTimeout(120000)
+  await page.goto(xproxxLink, { waitUntil: "domcontentloaded" });
 
-  
+  await page
+    .locator("#soralink-human-verif-main")
+    .setEnsureElementIsInTheViewport()
+    .setTimeout(60000)
+    .click()
+    .then(async () => {
+      await page
+        .locator(" #generater")
+        .setEnsureElementIsInTheViewport()
+        .click();
+    })
+    .then(async () => {
+      await page
+        .locator("img#showlink")
+        .setEnsureElementIsInTheViewport()
+        .click();
+    });
+  return new Promise(async (resolve) => {
+    browser.on("targetcreated", async function (target) {
+      let url = target.url();
+      if (url) {
+        let urlObject = new URL(url);
+        if (urlObject.host === "safetxt.net") {
+          let targetPage = await target.page();
+          let pageCookies = await targetPage.cookies();
+          resolve([url, pageCookies]);
+        }
+      }
+    });
+  });
 }
 
-downloadMovie();
+async function disableJavascript(page) {
+  await page.setRequestInterception(true);
+  page.on("request", (request) => {
+    if (request.resourceType() === "script") {
+      request.abort();
+    } else {
+      request.continue();
+    }
+  });
+}
+
+async function getDownloadLinksFromSafeTxt(browser, safeTxt, linkId) {
+  let page = await browser.newPage();
+  await disableJavascript(page);
+  try {
+    await page.goto(safeTxt, {
+      waitUntil: "domcontentloaded",
+      timeout: 10 * 1000,
+    });
+  } catch {}
+
+  let pageContent = await page.content();
+  let token = pageContent.match(/token\:\s?\'(.*?)\'/)[1];
+  let slug = pageContent.match(/slug\:\s?\'(.*?)\'/)[1];
+
+  if (!token && !slug) {
+    throw new Error("Couldnt extract token and slug from page");
+  }
+  const PASSWORD = "tfpdl";
+  let API_URL = "https://safetxt.net/get-paste";
+  console.log("fetching with axios..");
+  let response = await axios.post(API_URL, {
+    _token: token,
+    password: PASSWORD,
+    slug,
+  });
+  console.log("fetch done");
+  let content = atob(response.data.content);
+  content = decodeURIComponent(content.replace(/\+/g, "%20"));
+  let $ = cheerio.load(`${content}`, null, false);
+  let linkLists = $(".cm-url");
+
+  let arrLinks = [];
+  linkLists.each((id, el) => {
+    let links = $(el).attr("href");
+    arrLinks.push(links);
+  });
+
+  let stringLinks = JSON.stringify(arrLinks);
+  updateDownloadLinks(linkId, stringLinks);
+}
+
+async function workOnLinks(batch, data, browser) {
+  for (let i = 0; i < data.length; i += batch) {
+    let eachBatch = data.slice(i, i + batch);
+    for (const element of eachBatch) {
+      if (element == undefined || element.DOWNLOADLINKS !== null) {
+        continue;
+      }
+
+      try {
+        const [url] = await downloadMovie(browser, element.DOWNLOAD);
+        await getDownloadLinksFromSafeTxt(browser, url, element.ID);
+      } catch (error) {
+        console.error(error, "couldnt fetch");
+      }
+    }
+  }
+}
+
+async function getActualSafeTxtLinks() {
+  try {
+    const browser = await puppeteer.launch({ headless: false });
+    let data = await selectRows();
+
+    let batch = 10;
+    await Promise.all(await workOnLinks(batch, data, browser));
+  } catch (error) {
+    console.error("error fetching xproxx", error);
+  }
+}
+
+// getActualSafeTxtLinks();
 
 async function getItem(req, res, next) {
   let data = await selectRows();

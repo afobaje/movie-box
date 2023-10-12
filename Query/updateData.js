@@ -14,8 +14,7 @@ function updateRow(id, downloadLink) {
   );
 }
 
-
-function updateDownload(id,DOWNLOAD){
+function updateDownload(id, DOWNLOAD) {
   db.run(
     `UPDATE movieList SET DOWNLOAD=? WHERE ID=?`,
     [DOWNLOAD, id],
@@ -28,8 +27,21 @@ function updateDownload(id,DOWNLOAD){
   );
 }
 
+function updateDownloadLinks(id, DOWNLOADLINKS) {
+  db.run(
+    `UPDATE movieList SET DOWNLOADLINKS=? WHERE ID=?`,
+    [DOWNLOADLINKS, id],
+    (error) => {
+      if (error) {
+        console.error(error.message, "couldnt update JSON files");
+      }
+      console.log(`Row ${id} has been updated with requested JSON files`);
+    }
+  );
+}
+
 function updateTable() {
-  db.run(`ALTER TABLE movieList ADD COLUMN DOWNLOAD TEXT`, (error) => {
+  db.run(`ALTER TABLE movieList ADD COLUMN DOWNLOADLINKS TEXT`, (error) => {
     if (error) {
       console.error(error.message);
     }
@@ -37,4 +49,4 @@ function updateTable() {
   });
 }
 
-module.exports = { updateRow, updateTable,updateDownload };
+module.exports = { updateRow, updateTable, updateDownload,updateDownloadLinks };
