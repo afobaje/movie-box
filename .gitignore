@@ -4,3 +4,5 @@
 
 
 .env
+
+/Database/movieList.db
