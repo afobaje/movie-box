@@ -16,8 +16,6 @@ const {
   updateDownloadLinks,
 } = require("../Query/updateData");
 
-const tableData = selectRows();
-
 async function scrapeData() {
   const { data } = await axios.get(`${url}${latestMovies}`);
   let $ = cheerio.load(`${data}`, null, false);
@@ -35,9 +33,19 @@ async function scrapeData() {
   });
 }
 
+async function scrapeDataWithPageRows() {
+  const { data } = await axios.get(`${url}${latestMovies}`);
+  // let $ = cheerio.load(`${data}`, null, false);
+  // let listItems = $(".item-list");
+  console.log(data, "vest");
+}
+
+// scrapeDataWithPageRows()
+
 cron.schedule("5 10 * * wed", scrapeData);
 cron.schedule("6 10 * * wed", getEveryMovieDetails);
 cron.schedule("7 10 * * wed", getAllActualDownloadLink);
+cron.schedule("10 10 * * wed", getActualSafeTxtLinks);
 
 async function getMovieRedirectLink(url) {
   try {
@@ -106,10 +114,8 @@ async function getActualMovieLink(url) {
 }
 
 async function downloadMovie(browser, xproxxLink) {
-  // const browser = await puppeteer.launch({ headless: false });
   const page = await browser.newPage();
   await page.setDefaultTimeout(120000);
-  // await page.setDefaultNavigationTimeout(120000)
   await page.goto(xproxxLink, { waitUntil: "domcontentloaded" });
 
   await page
@@ -212,6 +218,7 @@ async function workOnLinks(batch, data, browser) {
       }
     }
   }
+  await browser.close();
 }
 
 async function getActualSafeTxtLinks() {
@@ -225,8 +232,6 @@ async function getActualSafeTxtLinks() {
     console.error("error fetching xproxx", error);
   }
 }
-
-// getActualSafeTxtLinks();
 
 async function getItem(req, res, next) {
   let data = await selectRows();

@@ -1,7 +1,10 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
-const port = 3002;
+const dotenv=require('dotenv').config()
+const port = process.env.PORT||3002;
+
+
 
 
 const { urlencoded } = require("express");
