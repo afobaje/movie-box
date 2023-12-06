@@ -1,9 +1,9 @@
 const cheerio = require("cheerio");
 const axios = require("axios");
 const cron = require("node-cron");
-const url = `https://www.tfpdl.is`;
-const latestMovies = `/category/movies`;
-const readMovieDetails = require("../movieDetailsList.json");
+const url=process.env.BASE_URL
+const latestMovies=process.env.LATESTMOVIES
+const readMoviePages = require("../movieFrame.json");
 const client = require("../client");
 const insertRow = require("../Query/insertData");
 const puppeteer = require("puppeteer");
@@ -15,6 +15,10 @@ const {
   updateDownload,
   updateDownloadLinks,
 } = require("../Query/updateData");
+
+const fs = require("fs");
+
+
 
 async function scrapeData() {
   const { data } = await axios.get(`${url}${latestMovies}`);
@@ -33,14 +37,55 @@ async function scrapeData() {
   });
 }
 
-async function scrapeDataWithPageRows() {
-  const { data } = await axios.get(`${url}${latestMovies}`);
-  // let $ = cheerio.load(`${data}`, null, false);
-  // let listItems = $(".item-list");
-  console.log(data, "vest");
+let numberOfMoviesToScrape = Array.from({ length: 5 }, (_, index) => index + 1);
+
+let movieFiles = [];
+async function scrapeMoviePerPage() {
+  try {
+    await Promise.all(
+      numberOfMoviesToScrape.map((val) => scrapeDataPerPage(val))
+    );
+    let stringMovies = JSON.stringify(movieFiles);
+    fs.writeFile("movieList.json", stringMovies, (err) => {
+      if (err) {
+        console.error("couldnt write", err);
+      } else {
+        console.log("file written successfully");
+      }
+    });
+  } catch (error) {
+    console.log("error scraping movies");
+  }
 }
 
-// scrapeDataWithPageRows()
+// scrapeMoviePerPage()
+
+async function scrapeDataPerPage(pages = 1) {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const { data } = await axios.get(`${url}${latestMovies}/page/${pages}`);
+      let $ = cheerio.load(`${data}`, null, false);
+      let listItems = $(".item-list");
+      listItems.each((idx, el) => {
+        let untrimmedTitle = $(el).find(".post-title a").text();
+        let untrimmedDescription = $(el).find(".entry p").text();
+        let untrimmedImgSrc = $(el).find(".entry p img").attr("src");
+        const link = $(el).find(".post-title a").attr("href");
+        const imgSrc = trimName(untrimmedImgSrc, "?");
+        const slug = getSlug(link);
+        const title = trimName(untrimmedTitle, " x");
+        const description = trimName(untrimmedDescription, "\n");
+        // insertRow(title, link, imgSrc, slug, description);
+        let result = { link, imgSrc, slug, title, description };
+        movieFiles.push(result);
+      });
+      resolve();
+    } catch (error) {
+      console.error(`error scraping page ${pages}`);
+      reject();
+    }
+  });
+}
 
 cron.schedule("5 10 * * wed", scrapeData);
 cron.schedule("6 10 * * wed", getEveryMovieDetails);
@@ -233,14 +278,72 @@ async function getActualSafeTxtLinks() {
   }
 }
 
-async function getItem(req, res, next) {
-  let data = await selectRows();
-  res.status(200).json(data || {});
-  next();
+async function getSelectedMovie(req, res) {
+  const data = await selectRows();
+  const movieId = parseInt(req.query.movie);
+  const [movie] = data.filter((val) => val.ID == movieId);
+  return res.status(200).json(movie || {});
 }
 
+
+
+
+async function getPages(req, res, next) {
+  let data = await selectRows();
+  let page = await parseInt(req.query.page || 1);
+  let limit = await parseInt(req.query.limit || 16);
+  let startIndex = (page - 1) * limit;
+  let endIndex = page * limit;
+  const result = {};
+
+  if (endIndex < data.length) {
+    result.next = {
+      page: page + 1,
+      limit,
+    };
+  }
+
+  if (startIndex > 0) {
+    result.prev = {
+      page: page - 1,
+      limit,
+    };
+  }
+  result.results = data.slice(startIndex, endIndex);
+  return res.status(200).json(result || {});
+}
+
+// async function paginatedResults(req,res,next) {
+//   let data=await selectRows()
+//     let page = await parseInt(req.query.page);
+//     let limit = await parseInt(req.query.limit);
+//     let startIndex = (page - 1) * limit;
+//     let endIndex = page * limit;
+//     const result = {};
+
+//     if (endIndex < data.length) {
+//       result.next = {
+//         page: page + 1,
+//         limit,
+//       };
+//     }
+
+//     if (startIndex > 0) {
+//       result.prev = {
+//         page: page - 1,
+//         limit,
+//       };
+//     }
+//     result.results = data.slice(startIndex, endIndex);
+
+//     res.paginatedResults = results;
+//     next();
+
+// }
+
 function getMovie(req, res, next) {
-  res.status(200).json(readMovieDetails);
+  res.status(200).json(readMoviePages);
+  // res.status(200).json(readMovieDetails);
   next();
 }
 
@@ -252,8 +355,12 @@ async function postItem(req, res, next) {
   next();
 }
 
+
+
+
 module.exports = {
-  getItem,
   getMovie,
+  getSelectedMovie,
   postItem,
+  getPages
 };

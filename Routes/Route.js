@@ -1,8 +1,15 @@
 const express = require("express");
 const router = express.Router();
-const { getItem, getMovie, postItem } = require("../Controller/Controller");
+const {  getMovie, postItem, getPages, getSelectedMovie, } = require("../Controller/Controller");
+const selectRows = require("../Query/listData");
 
-router.route("/").get(getItem).post(postItem);
+
+router.route('/').get(getPages).post(postItem)
+
+
+
+router.get('/selected',getSelectedMovie)
+
 
 router.get("/movie", getMovie);
 module.exports = router;
