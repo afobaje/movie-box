@@ -88,9 +88,11 @@ async function scrapeDataPerPage(pages = 1) {
 }
 
 cron.schedule("5 10 * * wed", scrapeData);
-cron.schedule("6 10 * * wed", getEveryMovieDetails);
-cron.schedule("7 10 * * wed", getAllActualDownloadLink);
-cron.schedule("10 10 * * wed", getActualSafeTxtLinks);
+cron.schedule("10 10 * * wed", getEveryMovieDetails);
+cron.schedule("15 10 * * wed", getAllActualDownloadLink);
+cron.schedule("20 10 * * wed", getActualSafeTxtLinks);
+
+
 
 async function getMovieRedirectLink(url) {
   try {
@@ -268,7 +270,7 @@ async function workOnLinks(batch, data, browser) {
 
 async function getActualSafeTxtLinks() {
   try {
-    const browser = await puppeteer.launch({ headless: false });
+    const browser = await puppeteer.launch();
     let data = await selectRows();
 
     let batch = 10;
@@ -289,7 +291,8 @@ async function getSelectedMovie(req, res) {
 
 
 async function getPages(req, res, next) {
-  let data = await selectRows();
+  let newdata = await selectRows();
+  let data=newdata.reverse()
   let page = await parseInt(req.query.page || 1);
   let limit = await parseInt(req.query.limit || 16);
   let startIndex = (page - 1) * limit;
