@@ -91,7 +91,8 @@ cron.schedule("5 10 * * wed", scrapeData);
 cron.schedule("10 10 * * wed", getEveryMovieDetails);
 cron.schedule("15 10 * * wed", getAllActualDownloadLink);
 cron.schedule("20 10 * * wed", getActualSafeTxtLinks);
-
+cron.schedule("10 11 * * wed",getActualSafeTxtLinks)
+cron.schedule("30 4 * * wed",getActualSafeTxtLinks)
 
 
 async function getMovieRedirectLink(url) {
