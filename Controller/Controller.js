@@ -94,7 +94,6 @@ cron.schedule("20 10 * * wed", getActualSafeTxtLinks);
 cron.schedule("10 11 * * wed",getActualSafeTxtLinks)
 cron.schedule("30 4 * * wed",getActualSafeTxtLinks)
 
-
 async function getMovieRedirectLink(url) {
   try {
     const { data } = await axios.get(url);
